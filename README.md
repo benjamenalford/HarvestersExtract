@@ -1,2 +1,2 @@
-# HarvestersExtract
-Extract Data From Kansas Harvesters Distribution
+# Harvesters Extract
+Extract Data From Kansas Harvesters Distribution website
