@@ -13,6 +13,9 @@ WEB_DRIVER_TIMEOUT = 0
 MONGO_ACTIVE = False
 RESET_DB = False
 WEB_DRIVER_HEADLESS = True
+TEST_RUN = False
+ZIP_COUNTY_DATAFILE = "KSZipCodes.txt"
+EXPORT_FILE = "HarvestersLocations.csv"
 
 if MONGO_ACTIVE:
     # setup the database
@@ -35,74 +38,83 @@ if WEB_DRIVER_HEADLESS:
 browser = webdriver.Chrome(chrome_options=chrome_options,)
 detailBrowser = webdriver.Chrome(chrome_options=chrome_options,)
 # load zip codes
-with open('KSZipCodes.txt') as f:
+with open(ZIP_COUNTY_DATAFILE) as f:
     reader = csv.reader(f)
     zips = list(reader)
 
-
+# keep track of where we are
+currentRecord = 0
+totalRecords = zips.__len__()
 # access a zip code
 # print(zips[0][0])
 for currentZip in zips:
+    currentRecord = currentRecord + 1
+
+    currentCounty = currentZip[1]
     currentZip = currentZip[0]
-    print(currentZip)
-    url = 'https://www.harvesters.org/Get-Help/Service-Locator.aspx'
 
-    browser.get(url)
-    time.sleep(WEB_DRIVER_TIMEOUT)
-    inputField = browser.find_element_by_id(
-        "ctl00_ctl00_cph_cphTop_locale")
-    radiusField = browser.find_element_by_id(
-        "ctl00_ctl00_cph_cphTop_radius")
-    serviceTypeField = browser.find_elements_by_id(
-        "ctl00_ctl00_cph_cphTop_serviceType")  # 1, 2, 3
-    submitButton = browser.find_elements_by_id("action")
+    print("Processing record: " + str(currentRecord) + " of " + str(totalRecords))
 
-    inputField.send_keys(currentZip)  # zips[0][0]
-    radiusField.send_keys("500")
+    if TEST_RUN == False:
+        url = 'https://www.harvesters.org/Get-Help/Service-Locator.aspx'
 
-    submitButton[0].click()
-    time.sleep(WEB_DRIVER_TIMEOUT)
-    searchResultHeader = browser.find_element_by_id(
-        "ctl00_ctl00_cph_cphTop_results")
-    searchResults = searchResultHeader.find_elements_by_class_name(
-        "assistance-result")
-
-    for results in searchResults:
-        searchResult = results.text
-        searchResult = searchResult.split("\n")
-        DetailButton = results.find_elements_by_class_name(
-            "btn-instructional")
-        DetailURL = DetailButton[0].get_attribute("href")
-        # Name	Address	Dates/Times	Details about food site
-        location = {
-            'Name': searchResult[0],
-            'Address 1': searchResult[1],
-            'City': searchResult[2].split(" ")[0],
-            'State': searchResult[2].split(" ")[1],
-            'ZipCode': searchResult[2].split(" ")[2],
-            'DistanceFromSearchedZipCode': searchResult[3],
-            'SearchedZipCode': currentZip,
-            'ServiceType': "",
-            'Phone': searchResult[3],
-            'Hours': ""
-
-        }
-        # grab the details
-        # spawn a new browser for that and then kill it when done.  fuck the children.
-        detailBrowser.get(DetailURL)
+        browser.get(url)
         time.sleep(WEB_DRIVER_TIMEOUT)
+        inputField = browser.find_element_by_id(
+            "ctl00_ctl00_cph_cphTop_locale")
+        radiusField = browser.find_element_by_id(
+            "ctl00_ctl00_cph_cphTop_radius")
+        serviceTypeField = browser.find_elements_by_id(
+            "ctl00_ctl00_cph_cphTop_serviceType")  # 1, 2, 3
+        submitButton = browser.find_elements_by_id("action")
 
-        serviceType = detailBrowser.find_elements_by_css_selector(
-            "#categories > div > div:nth-child(2) > div:nth-child(1) > div:nth-child(4)")
-        location["ServiceType"] = serviceType[0].text.replace(
-            "Service Type:", "")
+        inputField.send_keys(currentZip)  # zips[0][0]
+        radiusField.send_keys("500")
 
-        HoursContainer = detailBrowser.find_elements_by_class_name(
-            "hours-container")
+        submitButton[0].click()
+        time.sleep(WEB_DRIVER_TIMEOUT)
+        searchResultHeader = browser.find_element_by_id(
+            "ctl00_ctl00_cph_cphTop_results")
+        searchResults = searchResultHeader.find_elements_by_class_name(
+            "assistance-result")
 
-        location["Hours"] = HoursContainer[0].text
+        for results in searchResults:
+            searchResult = results.text
+            searchResult = searchResult.split("\n")
+            DetailButton = results.find_elements_by_class_name(
+                "btn-instructional")
+            DetailURL = DetailButton[0].get_attribute("href")
+            # Name	Address	Dates/Times	Details about food site
+            location = {
+                'Name': searchResult[0],
+                'Address 1': searchResult[1],
+                'City': searchResult[2].split(" ")[0],
+                'State': searchResult[2].split(" ")[1],
+                'ZipCode': searchResult[2].split(" ")[2],
+                'DistanceFromSearchedZipCode': searchResult[4],
+                'SearchedZipCode': currentZip,
+                'ServiceType': "",
+                'Phone': searchResult[3],
+                'Hours': "",
+                'County': currentCounty
 
-        DistributionLocations.append(location)
+            }
+            # grab the details
+            # spawn a new browser for that and then kill it when done.  fuck the children.
+            detailBrowser.get(DetailURL)
+            time.sleep(WEB_DRIVER_TIMEOUT)
+
+            serviceType = detailBrowser.find_elements_by_css_selector(
+                "#categories > div > div:nth-child(2) > div:nth-child(1) > div:nth-child(4)")
+            location["ServiceType"] = serviceType[0].text.replace(
+                "Service Type:", "")
+
+            HoursContainer = detailBrowser.find_elements_by_class_name(
+                "hours-container")
+
+            location["Hours"] = HoursContainer[0].text
+
+            DistributionLocations.append(location)
 
 detailBrowser.quit()
 browser.quit()
@@ -110,10 +122,10 @@ browser.quit()
 # print(DistributionLocations)
 
 csv_columns = ['Name', 'Address 1', 'City', 'State',
-               'ZipCode', "DistanceFromSearchedZipCode", "SearchedZipCode", "ServiceType", "Phone", "Hours"]
-csv_file = "HarvestersLocations.csv"
+               'ZipCode', "DistanceFromSearchedZipCode", "SearchedZipCode", "ServiceType", "Phone", "Hours", "County"]
+
 try:
-    with open(csv_file, 'w') as csvfile:
+    with open(EXPORT_FILE, 'w') as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=csv_columns)
         writer.writeheader()
         for data in DistributionLocations:
